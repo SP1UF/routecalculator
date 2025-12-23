@@ -5,33 +5,65 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+// Zmienne globalne mapy
+let map = null;
+let routeLayer = null;
+
 function checkDisplayMode() {
     const installGuide = document.getElementById('install-guide');
     const appContent = document.getElementById('app-content');
+    
+    // Sprawdzenie trybu wyświetlania
     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
     if (isStandalone) {
         installGuide.style.display = 'none';
         appContent.classList.remove('hidden-app');
-        // Inicjalizacja mapy dopiero gdy aplikacja jest widoczna (ważne dla Leaflet)
+        
+        // Inicjalizacja mapy z opóźnieniem, żeby DOM był gotowy
         setTimeout(initMap, 500); 
     } else {
         installGuide.style.display = 'flex';
     }
 }
-checkDisplayMode();
+
+// Uruchomienie przy starcie
+// Używamy DOMContentLoaded, żeby upewnić się, że HTML jest załadowany
+document.addEventListener('DOMContentLoaded', checkDisplayMode);
+
+// --- NAPRAWA BIAŁEGO EKRANU (Obsługa powrotu do aplikacji) ---
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        // Jeśli użytkownik wrócił do aplikacji, napraw mapę
+        if (map) {
+            setTimeout(() => {
+                map.invalidateSize(); // Naprawia szare/puste kafelki
+            }, 300);
+        }
+    }
+});
 
 
 // --- 2. LOGIKA MAPY (LEAFLET + OSRM) ---
-let map;
-let routeLayer;
-
 function initMap() {
+    // KLUCZOWA POPRAWKA: Jeśli mapa już istnieje, nie twórz jej ponownie!
+    // To powodowało biały ekran (błąd "Map container is already initialized")
+    if (map !== null) {
+        return; 
+    }
+
+    const mapContainer = document.getElementById('map');
+    if (!mapContainer) return;
+
     // Ustawienie mapy na Polskę
-    map = L.map('map').setView([52.069, 19.480], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+    try {
+        map = L.map('map').setView([52.069, 19.480], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+    } catch (e) {
+        console.error("Błąd inicjalizacji mapy:", e);
+    }
 }
 
 // Funkcja szukająca współrzędnych miasta (Nominatim API)
@@ -49,76 +81,81 @@ const startInput = document.getElementById('startCity');
 const endInput = document.getElementById('endCity');
 const navButtons = document.getElementById('navButtons');
 
-searchRouteBtn.addEventListener('click', async () => {
-    const startCity = startInput.value;
-    const endCity = endInput.value;
+if (searchRouteBtn) {
+    searchRouteBtn.addEventListener('click', async () => {
+        const startCity = startInput.value;
+        const endCity = endInput.value;
 
-    if (!startCity || !endCity) {
-        alert("Wpisz miasto startowe i docelowe.");
-        return;
-    }
+        if (!startCity || !endCity) {
+            alert("Wpisz miasto startowe i docelowe.");
+            return;
+        }
 
-    searchRouteBtn.textContent = "Szukam trasy...";
-    searchRouteBtn.disabled = true;
+        searchRouteBtn.textContent = "Szukam trasy...";
+        searchRouteBtn.disabled = true;
 
-    try {
-        // 1. Pobierz współrzędne
-        const startCoords = await getCoords(startCity);
-        const endCoords = await getCoords(endCity);
+        try {
+            // 1. Pobierz współrzędne
+            const startCoords = await getCoords(startCity);
+            const endCoords = await getCoords(endCity);
 
-        // 2. Pobierz trasę (OSRM API - Darmowe)
-        const routerUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.lon},${startCoords.lat};${endCoords.lon},${endCoords.lat}?overview=full&geometries=geojson`;
-        
-        const routeResp = await fetch(routerUrl);
-        const routeData = await routeResp.json();
+            // 2. Pobierz trasę (OSRM API - Darmowe)
+            const routerUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.lon},${startCoords.lat};${endCoords.lon},${endCoords.lat}?overview=full&geometries=geojson`;
+            
+            const routeResp = await fetch(routerUrl);
+            const routeData = await routeResp.json();
 
-        if (routeData.code !== "Ok") throw new Error("Nie znaleziono trasy drogowej.");
+            if (routeData.code !== "Ok") throw new Error("Nie znaleziono trasy drogowej.");
 
-        // 3. Wyciągnij dane
-        const route = routeData.routes[0];
-        const distanceKm = (route.distance / 1000).toFixed(1); // Metry na km
-        const geometry = route.geometry;
+            // 3. Wyciągnij dane
+            const route = routeData.routes[0];
+            const distanceKm = (route.distance / 1000).toFixed(1); // Metry na km
+            const geometry = route.geometry;
 
-        // 4. Rysuj na mapie
-        if (routeLayer) map.removeLayer(routeLayer);
-        
-        routeLayer = L.geoJSON(geometry, {
-            style: { color: 'blue', weight: 5, opacity: 0.7 }
-        }).addTo(map);
+            // 4. Rysuj na mapie
+            if (routeLayer) map.removeLayer(routeLayer);
+            
+            routeLayer = L.geoJSON(geometry, {
+                style: { color: 'blue', weight: 5, opacity: 0.7 }
+            }).addTo(map);
 
-        map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+            map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
 
-        // 5. Wpisz dane do kalkulatora
-        document.getElementById('distance').value = distanceKm;
-        
-        // Pokaż przyciski nawigacji
-        navButtons.classList.remove('hidden');
+            // 5. Wpisz dane do kalkulatora
+            document.getElementById('distance').value = distanceKm;
+            
+            // Pokaż przyciski nawigacji
+            navButtons.classList.remove('hidden');
 
-        // Uruchom przeliczanie kosztów
-        calculate(); 
+            // Uruchom przeliczanie kosztów
+            calculate(); 
 
-    } catch (error) {
-        alert("Błąd: " + error.message + ". Sprawdź internet lub nazwy miast.");
-    } finally {
-        searchRouteBtn.textContent = "Znajdź trasę i pobierz km";
-        searchRouteBtn.disabled = false;
-    }
-});
+        } catch (error) {
+            alert("Błąd: " + error.message + ". Sprawdź internet lub nazwy miast.");
+        } finally {
+            searchRouteBtn.textContent = "Znajdź trasę i pobierz km";
+            searchRouteBtn.disabled = false;
+        }
+    });
+}
 
 // Funkcja otwierająca zewnętrzne aplikacje
 window.openNav = function(type) {
     const start = startInput.value;
     const end = endInput.value;
     
-    if (type === 'google') {
-        window.open(`https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${end}`, '_blank');
-    } else if (type === 'apple') {
-        window.open(`http://maps.apple.com/?saddr=${start}&daddr=${end}`, '_blank');
-    }
+    // Używamy setTimeout, aby dać czas systemowi na przetworzenie kliknięcia przed przełączeniem
+    setTimeout(() => {
+        if (type === 'google') {
+            window.location.href = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${end}&travelmode=driving`;
+        } else if (type === 'apple') {
+            window.location.href = `http://maps.apple.com/?saddr=${start}&daddr=${end}&dirflg=d`;
+        }
+    }, 100);
 };
 
 
-// --- 3. LOGIKA KALKULATORA (Ta sama co wcześniej) ---
+// --- 3. LOGIKA KALKULATORA ---
 const distanceInput = document.getElementById('distance');
 const roundTripInput = document.getElementById('roundTrip');
 const consumptionInput = document.getElementById('consumption');
@@ -131,7 +168,6 @@ function loadSettings() {
     if(localStorage.getItem('fuelPrice')) fuelPriceInput.value = localStorage.getItem('fuelPrice');
     if(localStorage.getItem('consumption')) consumptionInput.value = localStorage.getItem('consumption');
     if(localStorage.getItem('ratePerKm')) rateInput.value = localStorage.getItem('ratePerKm');
-    // Opcjonalnie zapisane miasta
     if(localStorage.getItem('startCity')) startInput.value = localStorage.getItem('startCity');
 }
 
@@ -139,7 +175,7 @@ function saveSettings() {
     localStorage.setItem('fuelPrice', fuelPriceInput.value);
     localStorage.setItem('consumption', consumptionInput.value);
     localStorage.setItem('ratePerKm', rateInput.value);
-    localStorage.setItem('startCity', startInput.value); // Zapamiętaj start
+    localStorage.setItem('startCity', startInput.value);
 }
 
 function calculate() {
@@ -168,5 +204,7 @@ function calculate() {
     saveSettings();
 }
 
-calculateBtn.addEventListener('click', calculate);
+if (calculateBtn) {
+    calculateBtn.addEventListener('click', calculate);
+}
 loadSettings();
