@@ -1,4 +1,4 @@
-// Rejestracja Service Workera
+// 1. Rejestracja Service Workera
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
@@ -7,87 +7,82 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// --- DETEKCJA TRYBU APLIKACJI ---
+// 2. Detekcja trybu wyświetlania (App vs Browser)
 function checkDisplayMode() {
     const installGuide = document.getElementById('install-guide');
     const appContent = document.getElementById('app-content');
     
-    // Sprawdzenie dla iOS (navigator.standalone) oraz standardowe (matchMedia)
     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
     if (isStandalone) {
-        // Jesteśmy w aplikacji - pokaż kalkulator
         installGuide.style.display = 'none';
         appContent.classList.remove('hidden-app');
     } else {
-        // Jesteśmy w przeglądarce - pokaż instrukcję, kalkulator ukryty przez CSS
         installGuide.style.display = 'flex';
     }
 }
-
-// Uruchom sprawdzanie przy starcie
 checkDisplayMode();
 
-
-// --- LOGIKA KALKULATORA ---
-
+// 3. Logika Kalkulatora
 const distanceInput = document.getElementById('distance');
 const roundTripInput = document.getElementById('roundTrip');
 const consumptionInput = document.getElementById('consumption');
 const fuelPriceInput = document.getElementById('fuelPrice');
-const marginInput = document.getElementById('margin');
+const rateInput = document.getElementById('ratePerKm'); // Stawka za km
 const calculateBtn = document.getElementById('calculateBtn');
 const resultDiv = document.getElementById('result');
 
+// Ładowanie ustawień
 function loadSettings() {
     if(localStorage.getItem('fuelPrice')) fuelPriceInput.value = localStorage.getItem('fuelPrice');
     if(localStorage.getItem('consumption')) consumptionInput.value = localStorage.getItem('consumption');
-    if(localStorage.getItem('margin')) marginInput.value = localStorage.getItem('margin');
+    if(localStorage.getItem('ratePerKm')) rateInput.value = localStorage.getItem('ratePerKm');
 }
 
+// Zapisywanie ustawień
 function saveSettings() {
     localStorage.setItem('fuelPrice', fuelPriceInput.value);
     localStorage.setItem('consumption', consumptionInput.value);
-    localStorage.setItem('margin', marginInput.value);
+    localStorage.setItem('ratePerKm', rateInput.value);
 }
 
 function calculate() {
-    let dist = parseFloat(distanceInput.value);
+    let distOneWay = parseFloat(distanceInput.value);
     const consumption = parseFloat(consumptionInput.value);
     const price = parseFloat(fuelPriceInput.value);
-    const marginPercent = parseFloat(marginInput.value) || 0;
+    const ratePerKm = parseFloat(rateInput.value) || 0;
     const isRoundTrip = roundTripInput.checked;
 
-    if (isNaN(dist) || isNaN(consumption) || isNaN(price)) {
-        alert("Proszę uzupełnić pola liczbowe (dystans, spalanie, cena).");
+    if (isNaN(distOneWay) || isNaN(consumption) || isNaN(price)) {
+        alert("Wypełnij dystans, spalanie i cenę paliwa.");
         return;
     }
 
+    // Całkowity dystans
+    let totalDist = distOneWay;
     if (isRoundTrip) {
-        dist = dist * 2;
+        totalDist = distOneWay * 2;
     }
 
-    // 1. Koszt samego paliwa
-    const fuelNeeded = (dist / 100) * consumption;
+    // Koszty
+    const fuelNeeded = (totalDist / 100) * consumption;
     const fuelCost = fuelNeeded * price;
     
-    // 2. Kwota marży (zysku)
-    // Jeśli marża to np. 20% od kosztów, to: koszt * 0.20
-    const marginAmount = fuelCost * (marginPercent / 100);
+    // Zysk (Stawka za km * dystans)
+    const marginAmount = totalDist * ratePerKm;
     
-    // 3. Cena całkowita
+    // Suma
     const total = fuelCost + marginAmount;
 
-    // Wyświetlanie wyników
+    // Wynik
     document.getElementById('totalPrice').innerText = total.toFixed(2);
-    document.getElementById('marginProfit').innerText = marginAmount.toFixed(2); // Twój zysk
+    document.getElementById('marginProfit').innerText = marginAmount.toFixed(2);
     document.getElementById('fuelCost').innerText = fuelCost.toFixed(2);
-    document.getElementById('totalDist').innerText = dist.toFixed(1);
+    document.getElementById('totalDist').innerText = totalDist.toFixed(1);
 
     resultDiv.classList.remove('hidden');
-    
     saveSettings();
 }
 
 calculateBtn.addEventListener('click', calculate);
-loadSettings();;
+loadSettings();

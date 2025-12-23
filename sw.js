@@ -1,14 +1,13 @@
-const CACHE_NAME = 'trasa-calc-v2'; // Zmieniłem wersję, żeby wymusić aktualizację
+const CACHE_NAME = 'trasa-calc-v4';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
-  './icon.png'  // Tutaj dodaliśmy Twoją ikonę do pamięci offline
+  './icon.png'
 ];
 
-// Instalacja i zapisywanie plików w pamięci telefonu
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -17,18 +16,14 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Obsługa żądań (Działanie offline)
 self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.match(e.request).then((response) => {
-      // Jeśli plik jest w pamięci (np. ikona), weź go z pamięci.
-      // Jeśli nie, pobierz z internetu.
       return response || fetch(e.request);
     })
   );
 });
 
-// Czyszczenie starej pamięci (gdy zmieniasz wersję aplikacji)
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keyList) => {
