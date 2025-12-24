@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trasa-calc-v8';
+const CACHE_NAME = 'trasa-calc-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -34,4 +34,5 @@ self.addEventListener('activate', (e) => {
       }));
     })
   );
+
 });
