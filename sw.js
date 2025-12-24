@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trasa-calc-v10';
+const CACHE_NAME = 'trasa-calc-v11';
 const ASSETS = [
   './',
   './index.html',

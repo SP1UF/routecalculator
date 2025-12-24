@@ -1,60 +1,61 @@
-// 1. INICJALIZACJA I WYKRYWANIE PLATFORMY
+// --- ZMIENNE GLOBALNE (To jest serce naprawy) ---
+// Tutaj trzymamy współrzędne GPS wybranej miejscowości.
+// Dzięki temu nie szukamy jej drugi raz po nazwie.
+let selectedStart = null; // { lat: 12.34, lon: 56.78 }
+let selectedEnd = null;
+let isIOSDevice = false;
+
 window.onload = function() {
     checkPlatform();
-    
-    // Inicjalizacja mapy po załadowaniu
     initMap();
 };
 
 function checkPlatform() {
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isIOS = /iPhone|iPad|iPod/.test(userAgent) && !window.MSStream;
+    // Sprawdzamy czy to sprzęt Apple
+    isIOSDevice = /iPhone|iPad|iPod/.test(userAgent) && !window.MSStream;
 
-    // PODWÓJNE SPRAWDZANIE "INSTALACJI"
-    // 1. Stara metoda (dla starszych iOS)
+    // Sprawdzanie czy aplikacja jest zainstalowana (ukrywanie instrukcji)
     const isStandaloneLegacy = window.navigator.standalone === true;
-    // 2. Nowa metoda (dla nowych iOS)
     const isStandaloneModern = window.matchMedia('(display-mode: standalone)').matches;
-    
-    // Jeśli spełniony jest którykolwiek warunek, uznajemy że jest zainstalowana
     const isApp = isStandaloneLegacy || isStandaloneModern;
 
     const guide = document.getElementById('install-guide');
     const app = document.getElementById('app-content');
 
-    // Logika: Pokaż instrukcję TYLKO jeśli to iOS i NIE jest zainstalowane (nie jest App)
-    if (isIOS && !isApp) {
-        guide.classList.remove('hidden'); // Pokaż instrukcję
-        app.classList.add('hidden');      // Ukryj apkę
+    // Pokazujemy instrukcję TYLKO na iPhone w przeglądarce (nie w apce)
+    if (isIOSDevice && !isApp) {
+        if(guide) guide.classList.remove('hidden');
+        if(app) app.classList.add('hidden');
     } else {
-        // W każdym innym przypadku (Android, PC, lub ZAINSTALOWANE na iOS)
-        guide.classList.add('hidden');    // Ukryj instrukcję
-        app.classList.remove('hidden');   // Pokaż apkę
+        if(guide) guide.classList.add('hidden');
+        if(app) app.classList.remove('hidden');
     }
 }
 
-// 2. MAPA
+// --- MAPA ---
 let map;
 let routeLayer = null;
 
 function initMap() {
-    map = L.map('map').setView([52.0693, 19.4803], 6);
+    map = L.map('map').setView([52.0693, 19.4803], 6); // Środek Polski
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(map);
 }
 
-// --- PODPOWIEDZI MIAST (AUTOCOMPLETE) ---
+// --- PODPOWIEDZI MIAST I WYBÓR (AUTOCOMPLETE) ---
 
 const startInput = document.getElementById('startCity');
 const endInput = document.getElementById('endCity');
 
-async function searchCities(query, listElement, inputElement) {
+async function searchCities(query, listElement, inputElement, isStart) {
     if (query.length < 3) {
         listElement.style.display = 'none';
         return;
     }
 
+    // Szukamy tylko w Polsce
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&countrycodes=pl&addressdetails=1&limit=5`;
 
     try {
@@ -70,10 +71,8 @@ async function searchCities(query, listElement, inputElement) {
                 const div = document.createElement('div');
                 div.className = 'suggestion-item';
 
-                // Nazwa miasta
+                // Budowanie ładnej nazwy
                 const city = place.address.city || place.address.town || place.address.village || place.name;
-                
-                // Powiat i Województwo
                 const county = place.address.county || ''; 
                 const state = place.address.state || '';
 
@@ -84,10 +83,25 @@ async function searchCities(query, listElement, inputElement) {
                     detailText = `(${state})`;
                 }
 
+                // Wyświetlanie na liście
                 div.innerHTML = `<strong>${city}</strong> <span class="suggestion-detail">${detailText}</span>`;
 
+                // --- TU JEST NAPRAWA BŁĘDU ---
                 div.onclick = () => {
-                    inputElement.value = city;
+                    // 1. Wpisujemy nazwę do pola (żebyś widział co wybrałeś)
+                    inputElement.value = `${city} ${detailText}`;
+                    
+                    // 2. ZAPISUJEMY WSPÓŁRZĘDNE NA SZTYWNO
+                    const exactCoords = { lat: place.lat, lon: place.lon };
+                    
+                    if (isStart) {
+                        selectedStart = exactCoords; // Zapisz Start
+                        console.log("Wybrano Start:", selectedStart);
+                    } else {
+                        selectedEnd = exactCoords;   // Zapisz Cel
+                        console.log("Wybrano Cel:", selectedEnd);
+                    }
+
                     listElement.style.display = 'none';
                 };
 
@@ -102,17 +116,25 @@ async function searchCities(query, listElement, inputElement) {
     }
 }
 
+// Obsługa pisania w polu
 let timeoutId;
-function handleInput(e, listId, inputId) {
+function handleInput(e, listId, inputId, isStart) {
     clearTimeout(timeoutId);
+    
+    // Jeśli użytkownik zmazał tekst i pisze od nowa, KASUJEMY wybrane współrzędne
+    if (isStart) selectedStart = null;
+    else selectedEnd = null;
+
     const list = document.getElementById(listId);
     const input = document.getElementById(inputId);
-    timeoutId = setTimeout(() => { searchCities(e.target.value, list, input); }, 300);
+    timeoutId = setTimeout(() => { searchCities(e.target.value, list, input, isStart); }, 300);
 }
 
-startInput.addEventListener('input', (e) => handleInput(e, 'suggestions-start', 'startCity'));
-endInput.addEventListener('input', (e) => handleInput(e, 'suggestions-end', 'endCity'));
+// Podpinanie zdarzeń
+startInput.addEventListener('input', (e) => handleInput(e, 'suggestions-start', 'startCity', true));
+endInput.addEventListener('input', (e) => handleInput(e, 'suggestions-end', 'endCity', false));
 
+// Kliknięcie obok zamyka listę
 document.addEventListener('click', (e) => {
     if (e.target !== startInput) document.getElementById('suggestions-start').style.display = 'none';
     if (e.target !== endInput) document.getElementById('suggestions-end').style.display = 'none';
@@ -124,51 +146,101 @@ document.getElementById('searchRouteBtn').addEventListener('click', calculateRou
 document.getElementById('calculateBtn').addEventListener('click', calculateCost);
 
 async function calculateRoute() {
-    const start = startInput.value;
-    const end = endInput.value;
+    // 1. Sprawdzamy, czy mamy wybrane współrzędne z listy
+    let p1 = selectedStart;
+    let p2 = selectedEnd;
 
-    if (!start || !end) { alert("Wpisz obie miejscowości!"); return; }
+    // Zabezpieczenie: Jeśli ktoś wpisał "Warszawa" ręcznie i nie kliknął z listy
+    // to spróbujemy to znaleźć, ale lepiej klikać z listy.
+    if (!p1 && startInput.value) p1 = await getCoordsFallback(startInput.value);
+    if (!p2 && endInput.value) p2 = await getCoordsFallback(endInput.value);
 
-    const coordsStart = await getCoords(start);
-    const coordsEnd = await getCoords(end);
+    if (!p1 || !p2) {
+        alert("Wybierz miejscowości z listy podpowiedzi!");
+        return;
+    }
 
-    if (!coordsStart || !coordsEnd) { alert("Nie znaleziono miejscowości."); return; }
-
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStart.lon},${coordsStart.lat};${coordsEnd.lon},${coordsEnd.lat}?overview=full&geometries=geojson`;
+    // 2. Wysyłamy KONKRETNE WSPÓŁRZĘDNE do silnika trasy (OSRM)
+    // Kolejność w OSRM to: lon,lat
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${p1.lon},${p1.lat};${p2.lon},${p2.lat}?overview=full&geometries=geojson`;
     
     try {
         const response = await fetch(osrmUrl);
         const data = await response.json();
 
-        if (data.code !== 'Ok') { alert("Błąd trasy."); return; }
+        if (data.code !== 'Ok') {
+            alert("Nie udało się wyznaczyć trasy.");
+            return;
+        }
 
         const route = data.routes[0];
         const distanceKm = (route.distance / 1000).toFixed(1);
         
         document.getElementById('distance').value = distanceKm;
 
+        // Rysowanie trasy na mapie
         if (routeLayer) map.removeLayer(routeLayer);
         routeLayer = L.geoJSON(route.geometry, { style: { color: 'blue', weight: 5 } }).addTo(map);
+        
+        // Dopasowanie mapy do trasy
         map.fitBounds(routeLayer.getBounds());
 
-        document.getElementById('navButtons').classList.remove('hidden');
-        window.googleMapsLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(end)}&travelmode=driving`;
+        // 3. GENEROWANIE PRZYCISKÓW (Google / Apple)
+        generateMapButtons(p1, p2);
 
-    } catch (error) { alert("Błąd mapy."); }
+    } catch (error) {
+        console.error(error);
+        alert("Błąd połączenia z mapą.");
+    }
 }
 
-async function getCoords(city) {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${city}&limit=1`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return data[0] ? { lat: data[0].lat, lon: data[0].lon } : null;
+// Generowanie przycisków nawigacji
+function generateMapButtons(start, end) {
+    const navDiv = document.getElementById('navButtons');
+    navDiv.innerHTML = ''; // Czyścimy stare
+    navDiv.classList.remove('hidden');
+
+    // Link do Google Maps (dla wszystkich) - używamy LAT i LON
+    const googleLink = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lon}&destination=${end.lat},${end.lon}&travelmode=driving`;
+    
+    // Link do Apple Maps (tylko iOS) - używamy LAT i LON
+    const appleLink = `maps:?saddr=${start.lat},${start.lon}&daddr=${end.lat},${end.lon}&dirflg=d`;
+
+    // Przycisk Google Maps (Zawsze widoczny)
+    const btnGoogle = document.createElement('button');
+    btnGoogle.className = 'nav-btn google';
+    btnGoogle.innerText = 'Otwórz w Google Maps ↗';
+    btnGoogle.onclick = () => window.open(googleLink, '_blank');
+    navDiv.appendChild(btnGoogle);
+
+    // Przycisk Apple Maps (Tylko dla iPhone/iPad)
+    if (isIOSDevice) {
+        const btnApple = document.createElement('button');
+        btnApple.className = 'nav-btn apple'; 
+        btnApple.innerText = 'Otwórz w Apple Maps ↗';
+        btnApple.style.backgroundColor = 'black'; 
+        btnApple.style.color = 'white';
+        btnApple.style.marginTop = '10px';
+        
+        // Na iPhone otwiera aplikację Mapy
+        btnApple.onclick = () => window.location.href = appleLink;
+        
+        navDiv.appendChild(btnApple);
+    }
 }
 
-function openNav(type) {
-    if (type === 'google' && window.googleMapsLink) window.location.href = window.googleMapsLink;
+// Funkcja awaryjna (tylko jak ktoś nie kliknie w listę)
+async function getCoordsFallback(city) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${city}&countrycodes=pl&limit=1`;
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        return data[0] ? { lat: data[0].lat, lon: data[0].lon } : null;
+    } catch(e) { return null; }
 }
 
 function calculateCost() {
+    // Prosta matematyka kosztów
     let dist = parseFloat(document.getElementById('distance').value);
     const consumption = parseFloat(document.getElementById('consumption').value);
     const price = parseFloat(document.getElementById('fuelPrice').value);
