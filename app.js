@@ -7,9 +7,8 @@ window.onload = function() {
     checkPlatform();
     initMap();
     
-    // ZABEZPIECZENIE PRZED BIAŁYM EKRANEM PO POWROCIE
+    // ZABEZPIECZENIE PRZED BIAŁYM EKRANEM
     window.addEventListener('pageshow', function(event) {
-        // Jeśli strona została załadowana z cache (powrót przyciskiem wstecz)
         if (event.persisted) {
             checkPlatform();
             window.scrollTo(0, 0);
@@ -81,17 +80,12 @@ async function searchCities(query, listElement, inputElement, isStart) {
                 if (county && !city.includes(county)) detailText = `(${county})`; 
                 else if (state) detailText = `(${state})`;
 
-                // To co widzimy na liście
                 div.innerHTML = `<strong>${city}</strong> <span class="suggestion-detail">${detailText}</span>`;
 
                 div.onclick = () => {
-                    // 1. Wpisujemy PEŁNĄ NAZWĘ do pola (np. "Dobra (powiat łobeski)")
-                    // To jest kluczowe - ta nazwa pójdzie do Google Maps!
                     inputElement.value = `${city} ${detailText}`;
                     
-                    // 2. Zapisujemy współrzędne dla OSRM (żeby wyliczyć kilometry wewnątrz apki)
                     const exactCoords = { lat: place.lat, lon: place.lon };
-                    
                     if (isStart) selectedStart = exactCoords;
                     else selectedEnd = exactCoords;
 
@@ -133,7 +127,6 @@ async function calculateRoute() {
     let p1 = selectedStart;
     let p2 = selectedEnd;
 
-    // Fallback dla wpisywania ręcznego
     if (!p1 && startInput.value) p1 = await getCoordsFallback(startInput.value);
     if (!p2 && endInput.value) p2 = await getCoordsFallback(endInput.value);
 
@@ -142,7 +135,6 @@ async function calculateRoute() {
         return;
     }
 
-    // OSRM (liczenie km) nadal używa współrzędnych - to jest OK
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${p1.lon},${p1.lat};${p2.lon},${p2.lat}?overview=full&geometries=geojson`;
     
     try {
@@ -160,75 +152,84 @@ async function calculateRoute() {
         routeLayer = L.geoJSON(route.geometry, { style: { color: 'blue', weight: 5 } }).addTo(map);
         map.fitBounds(routeLayer.getBounds());
 
-        // Generuj przyciski (Tutaj jest zmiana logiczna!)
         generateMapButtons();
 
     } catch (error) { alert("Błąd połączenia."); }
 }
 
-// --- LINKI DO MAP I YANOSIKA (POPRAWIONE) ---
+// --- NAPRAWA PRZYCISKÓW (IOS FIX) ---
 function generateMapButtons() {
     const navDiv = document.getElementById('navButtons');
     navDiv.innerHTML = ''; 
     navDiv.classList.remove('hidden');
 
-    // Pobieramy TEKST z pól (np. "Dobra (powiat łobeski)")
-    // Dzięki temu Google Maps dostanie nazwę, a nie cyferki.
-    // A dzięki dopiskowi w nawiasie, nie pomyli z Węgrami.
+    // Nazwy dla map
     const startName = encodeURIComponent(startInput.value);
     const endName = encodeURIComponent(endInput.value);
 
-    // 1. GOOGLE MAPS (Otwieramy po nazwie)
-    // api=1 & origin=NAZWA & destination=NAZWA
-    const googleLink = `https://www.google.com/maps/dir/?api=1&origin=${startName}&destination=${endName}&travelmode=driving`;
-    
-    // 2. APPLE MAPS (Otwieramy po nazwie)
-    const appleLink = `http://maps.apple.com/?saddr=${startName}&daddr=${endName}&dirflg=d`;
+    // 1. LINKI DLA IPHONE (IOS) - Używamy "schemes" żeby uniknąć białego ekranu
+    // comgooglemaps:// wymusza otwarcie APKI, a nie przeglądarki.
+    const googleLinkIOS = `comgooglemaps://?saddr=${startName}&daddr=${endName}&directionsmode=driving`;
+    const appleLinkIOS = `maps://?saddr=${startName}&daddr=${endName}&dirflg=d`;
+    // Yanosik na iOS działa tylko jako otwarcie apki
+    const yanosikLinkIOS = "yanosik://";
 
-    // 3. YANOSIK (Tu musimy użyć współrzędnych, bo Yanosik słabo radzi sobie z nazwami z zewnątrz)
-    // Ale Yanosik to mniejszy problem wizualny.
-    let yanosikLink = "#";
-    if (selectedEnd) {
-        if (isIOSDevice) {
-            yanosikLink = "yanosik://"; // iOS nie pozwala łatwo wyznaczyć trasy z linku w Yanosiku
-        } else {
-             // Android Intent
-            yanosikLink = `intent://#Intent;scheme=yanosik;package=pl.neptis.yanosik.mobi.android;end`; 
-        }
-    }
+    // 2. LINKI DLA ANDROIDA / WEB - Standardowe HTTP
+    const googleLinkWeb = `https://www.google.com/maps/dir/?api=1&origin=${startName}&destination=${endName}&travelmode=driving`;
+    // Yanosik Android Intent
+    const yanosikLinkAndroid = `intent://#Intent;scheme=yanosik;package=pl.neptis.yanosik.mobi.android;end`;
 
-    // -- TWORZENIE PRZYCISKÓW --
+    // --- TWORZENIE PRZYCISKÓW ---
 
-    // Google Maps
+    // A. GOOGLE MAPS
     const btnGoogle = document.createElement('button');
     btnGoogle.className = 'nav-btn google';
     btnGoogle.innerText = 'Google Maps ↗';
-    // FIX BIAŁEGO EKRANU: window.open zamiast location.href
+    
     btnGoogle.onclick = (e) => {
         e.preventDefault();
-        window.open(googleLink, '_system'); // _system wymusza zewnętrzną aplikację/przeglądarkę
+        if (isIOSDevice) {
+            // Na iPhone próbujemy otworzyć aplikację bezpośrednio
+            window.location.href = googleLinkIOS;
+            
+            // Fallback: Jeśli po 2 sek nic się nie stanie (brak apki), otwórz w przeglądarce
+            setTimeout(() => {
+                window.open(googleLinkWeb, '_system');
+            }, 2500);
+        } else {
+            // Android
+            window.open(googleLinkWeb, '_system');
+        }
     };
     navDiv.appendChild(btnGoogle);
 
-    // Apple Maps (Tylko iOS)
+    // B. APPLE MAPS (Tylko iOS)
     if (isIOSDevice) {
         const btnApple = document.createElement('button');
         btnApple.className = 'nav-btn apple'; 
         btnApple.innerText = 'Apple Maps ↗';
         btnApple.onclick = (e) => {
              e.preventDefault();
-             window.open(appleLink, '_system');
+             window.location.href = appleLinkIOS; // To zawsze zadziała na iPhone
         };
         navDiv.appendChild(btnApple);
     }
 
-    // Yanosik (Wszędzie)
+    // C. YANOSIK
     const btnYanosik = document.createElement('button');
     btnYanosik.className = 'nav-btn yanosik';
     btnYanosik.innerText = 'Yanosik ↗';
+    
     btnYanosik.onclick = (e) => {
         e.preventDefault();
-        window.location.href = yanosikLink; // Yanosik to deep link, tutaj href jest bezpieczniejszy
+        if (isIOSDevice) {
+            // NAPRAWA YANOSIKA NA IPHONE:
+            // Używamy location.href, a nie window.open - to klucz do sukcesu przy custom scheme
+            window.location.href = yanosikLinkIOS;
+        } else {
+            // Android
+            window.location.href = yanosikLinkAndroid;
+        }
     };
     navDiv.appendChild(btnYanosik);
 }
