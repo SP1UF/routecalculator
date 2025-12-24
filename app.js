@@ -7,20 +7,29 @@ window.onload = function() {
 };
 
 function checkPlatform() {
-    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    const isStandalone = window.navigator.standalone === true; // Czy dodano do ekranu głównego (iOS)
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isIOS = /iPhone|iPad|iPod/.test(userAgent) && !window.MSStream;
+
+    // PODWÓJNE SPRAWDZANIE "INSTALACJI"
+    // 1. Stara metoda (dla starszych iOS)
+    const isStandaloneLegacy = window.navigator.standalone === true;
+    // 2. Nowa metoda (dla nowych iOS)
+    const isStandaloneModern = window.matchMedia('(display-mode: standalone)').matches;
+    
+    // Jeśli spełniony jest którykolwiek warunek, uznajemy że jest zainstalowana
+    const isApp = isStandaloneLegacy || isStandaloneModern;
 
     const guide = document.getElementById('install-guide');
     const app = document.getElementById('app-content');
 
-    // JEŚLI to iPhone ORAZ NIE jest w trybie aplikacji (czyli jest w Safari)
-    if (isIOS && !isStandalone) {
+    // Logika: Pokaż instrukcję TYLKO jeśli to iOS i NIE jest zainstalowane (nie jest App)
+    if (isIOS && !isApp) {
         guide.classList.remove('hidden'); // Pokaż instrukcję
-        app.classList.add('hidden');    // Ukryj kalkulator (żeby nie rozpraszał)
+        app.classList.add('hidden');      // Ukryj apkę
     } else {
-        // W każdym innym przypadku (Android, PC, lub już zainstalowane na iOS)
+        // W każdym innym przypadku (Android, PC, lub ZAINSTALOWANE na iOS)
         guide.classList.add('hidden');    // Ukryj instrukcję
-        app.classList.remove('hidden');   // Pokaż kalkulator
+        app.classList.remove('hidden');   // Pokaż apkę
     }
 }
 
