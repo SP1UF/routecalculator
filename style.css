@@ -43,7 +43,6 @@ input[type="number"] {
     box-sizing: border-box;
 }
 
-/* Checkbox style */
 .checkbox-wrapper {
     display: flex;
     align-items: center;
@@ -77,7 +76,6 @@ button {
     margin-top: 10px;
 }
 
-/* Wyniki */
 .result {
     background: #e3f2fd;
     padding: 20px;
@@ -103,7 +101,6 @@ button {
 }
 .hidden { display: none !important; }
 
-/* Mapa */
 .map-container {
     height: 300px;
     width: 100%;
@@ -111,12 +108,6 @@ button {
     border-radius: 8px;
     z-index: 1;
 }
-.nav-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-}
-.nav-btn.google { background-color: #DB4437; }
 
 /* --- SUGGESTIONS (PODPOWIEDZI MIAST) --- */
 .input-wrapper { position: relative; width: 100%; }
@@ -145,7 +136,7 @@ button {
 .suggestion-item:hover { background-color: #f0f7ff; color: #0066cc; }
 .suggestion-detail { font-size: 13px; color: #888; font-style: italic; margin-left: 5px; }
 
-/* --- INSTALACJA IOS (STYLISTYKA) --- */
+/* --- INSTALACJA IOS --- */
 .install-guide {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
@@ -154,7 +145,7 @@ button {
     z-index: 9999;
     display: flex;
     justify-content: center;
-    align-items: flex-end; /* Strzałka na dole */
+    align-items: flex-end;
     color: white;
     padding-bottom: 40px;
 }
@@ -185,4 +176,50 @@ button {
 @keyframes bounce {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(10px); }
+}
+
+/* --- STYL PRZYCISKÓW NAWIGACJI (NAPRAWA WYGLĄDU) --- */
+.nav-buttons {
+    display: flex;
+    flex-direction: column; /* Jeden pod drugim */
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.nav-btn {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+    box-sizing: border-box; /* Ważne: Wyrównuje szerokość i wysokość */
+    min-height: 52px; /* Sztywna wysokość minimalna */
+    line-height: 1.2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Kolory */
+.nav-btn.google {
+    background-color: #4285F4; /* Niebieski Google */
+    color: white;
+}
+.nav-btn.apple {
+    background-color: #000000; /* Czarny Apple */
+    color: white;
+}
+.nav-btn.yanosik {
+    background-color: #6a3ab2; /* Fioletowy Yanosik */
+    color: white;
+}
+
+.nav-btn:active {
+    opacity: 0.8;
+    transform: scale(0.98);
 }
