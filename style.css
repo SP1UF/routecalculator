@@ -91,3 +91,48 @@ button:active { transform: scale(0.98); opacity: 0.9; }
 .price { font-size: 42px; font-weight: 800; color: var(--text); margin: 5px 0; }
 .profit-box { background-color: var(--profit-bg); color: var(--profit-text); padding: 10px; border-radius: 8px; font-weight: 700; font-size: 18px; margin: 15px 0; }
 .details { font-size: 14px; color: #8e8e93; display: flex; justify-content: space-around; margin-top: 15px; border-top: 1px solid #e5e5ea; padding-top: 15px; }
+
+/* --- Style dla podpowiedzi miejscowości --- */
+.input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.suggestions-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none; /* Domyślnie ukryte */
+}
+
+.suggestion-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    text-align: left;
+}
+
+.suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-item:hover {
+    background-color: #f0f7ff;
+    color: #0066cc;
+}
+
+.suggestion-detail {
+    font-size: 12px;
+    color: #888;
+    margin-left: 5px;
+}

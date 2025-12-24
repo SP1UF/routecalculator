@@ -1,210 +1,207 @@
-// --- 1. SETUP SYSTEMOWY ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
-    });
-}
+// Inicjalizacja Mapy (Domyślnie środek Polski)
+const map = L.map('map').setView([52.0693, 19.4803], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
 
-// Zmienne globalne mapy
-let map = null;
 let routeLayer = null;
 
-function checkDisplayMode() {
-    const installGuide = document.getElementById('install-guide');
-    const appContent = document.getElementById('app-content');
-    
-    // Sprawdzenie trybu wyświetlania
-    const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+// --- AUTOCOMPLETE (PODPOWIEDZI MIEJSCOWOŚCI) ---
 
-    if (isStandalone) {
-        installGuide.style.display = 'none';
-        appContent.classList.remove('hidden-app');
-        
-        // Inicjalizacja mapy z opóźnieniem, żeby DOM był gotowy
-        setTimeout(initMap, 500); 
-    } else {
-        installGuide.style.display = 'flex';
+const startInput = document.getElementById('startCity');
+const endInput = document.getElementById('endCity');
+const suggestionsStart = document.getElementById('suggestions-start');
+const suggestionsEnd = document.getElementById('suggestions-end');
+
+// Funkcja szukająca miast w API Nominatim
+async function searchCities(query, listElement, inputElement) {
+    if (query.length < 3) {
+        listElement.style.display = 'none';
+        return;
+    }
+
+    // Szukamy tylko w Polsce (countrycodes=pl) i prosimy o szczegóły adresu (addressdetails=1)
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&countrycodes=pl&addressdetails=1&limit=5`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        listElement.innerHTML = ''; // Czyścimy starą listę
+
+        if (data.length > 0) {
+            listElement.style.display = 'block';
+            
+            data.forEach(place => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+
+                // Budujemy ładny opis: Miasto (Powiat, Województwo)
+                const city = place.address.city || place.address.town || place.address.village || place.address.municipality;
+                const county = place.address.county ? `, ${place.address.county}` : '';
+                const state = place.address.state ? `, ${place.address.state}` : '';
+                
+                // Jeśli nazwa to np. "Warszawa", to nie chcemy duplikatu w powiecie
+                let displayText = city;
+                if(place.address.county && !city.includes(place.address.county)) {
+                     displayText += ` <span class="suggestion-detail">(${place.address.county})</span>`;
+                } else {
+                     displayText += ` <span class="suggestion-detail">${state}</span>`;
+                }
+
+                div.innerHTML = displayText;
+
+                // Kliknięcie w propozycję
+                div.onclick = () => {
+                    inputElement.value = city; // Wpisz samą nazwę miasta do inputa
+                    listElement.style.display = 'none'; // Ukryj listę
+                };
+
+                listElement.appendChild(div);
+            });
+        } else {
+            listElement.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error("Błąd pobierania miast:", error);
     }
 }
 
-// Uruchomienie przy starcie
-// Używamy DOMContentLoaded, żeby upewnić się, że HTML jest załadowany
-document.addEventListener('DOMContentLoaded', checkDisplayMode);
+// Nasłuchiwanie pisania (z małym opóźnieniem, żeby nie męczyć API)
+let timeoutId;
+function handleInput(e, listId, inputId) {
+    clearTimeout(timeoutId);
+    const list = document.getElementById(listId);
+    const input = document.getElementById(inputId);
+    
+    timeoutId = setTimeout(() => {
+        searchCities(e.target.value, list, input);
+    }, 300); // Czekaj 300ms po skończeniu pisania
+}
 
-// --- NAPRAWA BIAŁEGO EKRANU (Obsługa powrotu do aplikacji) ---
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        // Jeśli użytkownik wrócił do aplikacji, napraw mapę
-        if (map) {
-            setTimeout(() => {
-                map.invalidateSize(); // Naprawia szare/puste kafelki
-            }, 300);
-        }
-    }
+// Podpinamy zdarzenia do pól
+startInput.addEventListener('input', (e) => handleInput(e, 'suggestions-start', 'startCity'));
+endInput.addEventListener('input', (e) => handleInput(e, 'suggestions-end', 'endCity'));
+
+// Ukrywanie listy jak klikniemy gdzieś obok
+document.addEventListener('click', (e) => {
+    if (e.target !== startInput) suggestionsStart.style.display = 'none';
+    if (e.target !== endInput) suggestionsEnd.style.display = 'none';
 });
 
 
-// --- 2. LOGIKA MAPY (LEAFLET + OSRM) ---
-function initMap() {
-    // KLUCZOWA POPRAWKA: Jeśli mapa już istnieje, nie twórz jej ponownie!
-    // To powodowało biały ekran (błąd "Map container is already initialized")
-    if (map !== null) {
-        return; 
+// --- STARA LOGIKA KALKULATORA PONIŻEJ ---
+
+document.getElementById('searchRouteBtn').addEventListener('click', calculateRoute);
+document.getElementById('calculateBtn').addEventListener('click', calculateCost);
+
+// Funkcja rysująca trasę (korzystamy z routera OSRM - darmowy)
+async function calculateRoute() {
+    const start = document.getElementById('startCity').value;
+    const end = document.getElementById('endCity').value;
+
+    if (!start || !end) {
+        alert("Wpisz obie miejscowości!");
+        return;
     }
 
-    const mapContainer = document.getElementById('map');
-    if (!mapContainer) return;
+    // 1. Zamiana nazw miast na współrzędne (Geocoding)
+    const coordsStart = await getCoords(start);
+    const coordsEnd = await getCoords(end);
 
-    // Ustawienie mapy na Polskę
+    if (!coordsStart || !coordsEnd) {
+        alert("Nie znaleziono jednej z miejscowości.");
+        return;
+    }
+
+    // 2. Wyznaczanie trasy (OSRM)
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStart.lon},${coordsStart.lat};${coordsEnd.lon},${coordsEnd.lat}?overview=full&geometries=geojson`;
+    
     try {
-        map = L.map('map').setView([52.069, 19.480], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-    } catch (e) {
-        console.error("Błąd inicjalizacji mapy:", e);
-    }
-}
+        const response = await fetch(osrmUrl);
+        const data = await response.json();
 
-// Funkcja szukająca współrzędnych miasta (Nominatim API)
-async function getCoords(city) {
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
-    const data = await response.json();
-    if (data && data.length > 0) {
-        return { lat: data[0].lat, lon: data[0].lon };
-    }
-    throw new Error(`Nie znaleziono miasta: ${city}`);
-}
-
-const searchRouteBtn = document.getElementById('searchRouteBtn');
-const startInput = document.getElementById('startCity');
-const endInput = document.getElementById('endCity');
-const navButtons = document.getElementById('navButtons');
-
-if (searchRouteBtn) {
-    searchRouteBtn.addEventListener('click', async () => {
-        const startCity = startInput.value;
-        const endCity = endInput.value;
-
-        if (!startCity || !endCity) {
-            alert("Wpisz miasto startowe i docelowe.");
+        if (data.code !== 'Ok') {
+            alert("Nie udało się wyznaczyć trasy.");
             return;
         }
 
-        searchRouteBtn.textContent = "Szukam trasy...";
-        searchRouteBtn.disabled = true;
+        const route = data.routes[0];
+        const distanceKm = (route.distance / 1000).toFixed(1); // Metry na km
+        
+        // Wypełnij pole dystansu
+        document.getElementById('distance').value = distanceKm;
 
-        try {
-            // 1. Pobierz współrzędne
-            const startCoords = await getCoords(startCity);
-            const endCoords = await getCoords(endCity);
+        // Rysowanie na mapie
+        if (routeLayer) map.removeLayer(routeLayer);
+        
+        // OSRM zwraca [lon, lat], Leaflet chce [lat, lon], ale GeoJSON to obsługuje automatycznie
+        routeLayer = L.geoJSON(route.geometry, {
+            style: { color: 'blue', weight: 5 }
+        }).addTo(map);
 
-            // 2. Pobierz trasę (OSRM API - Darmowe)
-            const routerUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.lon},${startCoords.lat};${endCoords.lon},${endCoords.lat}?overview=full&geometries=geojson`;
-            
-            const routeResp = await fetch(routerUrl);
-            const routeData = await routeResp.json();
+        map.fitBounds(routeLayer.getBounds()); // Dopasuj zoom do trasy
 
-            if (routeData.code !== "Ok") throw new Error("Nie znaleziono trasy drogowej.");
+        // Pokaż przycisk Google Maps
+        const navDiv = document.getElementById('navButtons');
+        navDiv.classList.remove('hidden');
+        
+        // Zapisz link do Google Maps
+        window.googleMapsLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(end)}&travelmode=driving`;
 
-            // 3. Wyciągnij dane
-            const route = routeData.routes[0];
-            const distanceKm = (route.distance / 1000).toFixed(1); // Metry na km
-            const geometry = route.geometry;
-
-            // 4. Rysuj na mapie
-            if (routeLayer) map.removeLayer(routeLayer);
-            
-            routeLayer = L.geoJSON(geometry, {
-                style: { color: 'blue', weight: 5, opacity: 0.7 }
-            }).addTo(map);
-
-            map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-
-            // 5. Wpisz dane do kalkulatora
-            document.getElementById('distance').value = distanceKm;
-            
-            // Pokaż przyciski nawigacji
-            navButtons.classList.remove('hidden');
-
-            // Uruchom przeliczanie kosztów
-            calculate(); 
-
-        } catch (error) {
-            alert("Błąd: " + error.message + ". Sprawdź internet lub nazwy miast.");
-        } finally {
-            searchRouteBtn.textContent = "Znajdź trasę i pobierz km";
-            searchRouteBtn.disabled = false;
-        }
-    });
+    } catch (error) {
+        console.error(error);
+        alert("Błąd połączenia z serwerem map.");
+    }
 }
 
-// Funkcja otwierająca zewnętrzne aplikacje
-window.openNav = function(type) {
-    const start = startInput.value;
-    const end = endInput.value;
+// Funkcja pomocnicza do pobierania współrzędnych
+async function getCoords(city) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${city}&limit=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data[0] ? { lat: data[0].lat, lon: data[0].lon } : null;
+}
+
+function openNav(type) {
+    if (type === 'google' && window.googleMapsLink) {
+        window.location.href = window.googleMapsLink;
+    }
+}
+
+function calculateCost() {
+    let dist = parseFloat(document.getElementById('distance').value);
+    const consumption = parseFloat(document.getElementById('consumption').value);
+    const price = parseFloat(document.getElementById('fuelPrice').value);
+    const rate = parseFloat(document.getElementById('ratePerKm').value);
+    const isRoundTrip = document.getElementById('roundTrip').checked;
+
+    if (!dist || !consumption || !price || !rate) {
+        alert("Wypełnij wszystkie pola z liczbami!");
+        return;
+    }
+
+    if (isRoundTrip) {
+        dist = dist * 2;
+    }
+
+    // Obliczenia
+    const fuelNeeded = (dist * consumption) / 100;
+    const fuelCostValue = fuelNeeded * price;
+    const totalServiceCost = dist * rate; // Klient płaci stawkę za km (w niej jest paliwo i zysk)
     
-    // Używamy setTimeout, aby dać czas systemowi na przetworzenie kliknięcia przed przełączeniem
-    setTimeout(() => {
-        if (type === 'google') {
-            window.location.href = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${end}&travelmode=driving`;
-        } else if (type === 'apple') {
-            window.location.href = `http://maps.apple.com/?saddr=${start}&daddr=${end}&dirflg=d`;
-        }
-    }, 100);
-};
+    // Zysk = To co klient zapłacił - Koszt paliwa
+    const profit = totalServiceCost - fuelCostValue;
 
+    // Wyświetlanie
+    document.getElementById('totalPrice').innerText = totalServiceCost.toFixed(2);
+    document.getElementById('marginProfit').innerText = profit.toFixed(2);
+    document.getElementById('fuelCost').innerText = fuelCostValue.toFixed(2);
+    document.getElementById('totalDist').innerText = dist.toFixed(1);
 
-// --- 3. LOGIKA KALKULATORA ---
-const distanceInput = document.getElementById('distance');
-const roundTripInput = document.getElementById('roundTrip');
-const consumptionInput = document.getElementById('consumption');
-const fuelPriceInput = document.getElementById('fuelPrice');
-const rateInput = document.getElementById('ratePerKm');
-const calculateBtn = document.getElementById('calculateBtn');
-const resultDiv = document.getElementById('result');
-
-function loadSettings() {
-    if(localStorage.getItem('fuelPrice')) fuelPriceInput.value = localStorage.getItem('fuelPrice');
-    if(localStorage.getItem('consumption')) consumptionInput.value = localStorage.getItem('consumption');
-    if(localStorage.getItem('ratePerKm')) rateInput.value = localStorage.getItem('ratePerKm');
-    if(localStorage.getItem('startCity')) startInput.value = localStorage.getItem('startCity');
+    document.getElementById('result').classList.remove('hidden');
+    
+    // Scroll do wyniku
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
 }
-
-function saveSettings() {
-    localStorage.setItem('fuelPrice', fuelPriceInput.value);
-    localStorage.setItem('consumption', consumptionInput.value);
-    localStorage.setItem('ratePerKm', rateInput.value);
-    localStorage.setItem('startCity', startInput.value);
-}
-
-function calculate() {
-    let distOneWay = parseFloat(distanceInput.value);
-    const consumption = parseFloat(consumptionInput.value);
-    const price = parseFloat(fuelPriceInput.value);
-    const ratePerKm = parseFloat(rateInput.value) || 0;
-    const isRoundTrip = roundTripInput.checked;
-
-    if (isNaN(distOneWay) || isNaN(consumption) || isNaN(price)) return;
-
-    let totalDist = distOneWay;
-    if (isRoundTrip) totalDist = distOneWay * 2;
-
-    const fuelNeeded = (totalDist / 100) * consumption;
-    const fuelCost = fuelNeeded * price;
-    const marginAmount = totalDist * ratePerKm;
-    const total = fuelCost + marginAmount;
-
-    document.getElementById('totalPrice').innerText = total.toFixed(2);
-    document.getElementById('marginProfit').innerText = marginAmount.toFixed(2);
-    document.getElementById('fuelCost').innerText = fuelCost.toFixed(2);
-    document.getElementById('totalDist').innerText = totalDist.toFixed(1);
-
-    resultDiv.classList.remove('hidden');
-    saveSettings();
-}
-
-if (calculateBtn) {
-    calculateBtn.addEventListener('click', calculate);
-}
-loadSettings();

@@ -37,8 +37,15 @@
         <div class="card map-card">
             <h3>Planowanie Trasy</h3>
             <div class="route-inputs">
-                <input type="text" id="startCity" placeholder="Start (np. Warszawa)">
-                <input type="text" id="endCity" placeholder="Cel (np. Kraków)">
+                <div class="input-wrapper">
+                    <input type="text" id="startCity" placeholder="Start (np. Warszawa)" autocomplete="off">
+                    <div id="suggestions-start" class="suggestions-list"></div>
+                </div>
+
+                <div class="input-wrapper">
+                    <input type="text" id="endCity" placeholder="Cel (np. Kraków)" autocomplete="off">
+                    <div id="suggestions-end" class="suggestions-list"></div>
+                </div>
             </div>
             <button id="searchRouteBtn" class="secondary-btn">Znajdź trasę i pobierz km</button>
             
