@@ -8,17 +8,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Trasa Calc">
-    
-    <link rel="apple-touch-icon" href="icon.png">
+
     <link rel="stylesheet" href="style.css">
-    <link rel="manifest" href="manifest.json">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
-    <div id="install-guide" class="install-guide">
+    <div id="install-guide" class="install-guide hidden">
         <div class="guide-content">
             <h1>Zainstaluj Aplikację</h1>
             <p>Aby korzystać z kalkulatora, dodaj go do ekranu początkowego.</p>
@@ -31,11 +29,12 @@
         </div>
     </div>
 
-    <div id="app-content" class="container hidden-app">
+    <div id="app-content" class="container">
         <h1>Kalkulator Trasy</h1>
 
         <div class="card map-card">
             <h3>Planowanie Trasy</h3>
+            
             <div class="route-inputs">
                 <div class="input-wrapper">
                     <input type="text" id="startCity" placeholder="Start (np. Warszawa)" autocomplete="off">
@@ -47,13 +46,13 @@
                     <div id="suggestions-end" class="suggestions-list"></div>
                 </div>
             </div>
+
             <button id="searchRouteBtn" class="secondary-btn">Znajdź trasę i pobierz km</button>
             
             <div id="map" class="map-container"></div>
             
             <div id="navButtons" class="nav-buttons hidden">
                 <button onclick="openNav('google')" class="nav-btn google">Google Maps ↗</button>
-                <button onclick="openNav('apple')" class="nav-btn apple">Apple Maps ↗</button>
             </div>
         </div>
 
